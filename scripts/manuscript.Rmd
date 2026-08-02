@@ -1,0 +1,433 @@
+---
+title: "C2 protects against Crohn's disease while CFI marks ileal-specific compensation: a multi-omics and Mendelian randomisation study"
+author:
+  - ChunJian Mo
+  - Qin Li
+  - LingXiu Hou
+  - YuanMing Liu
+  - WenXiu Yang
+  - LiLi Su
+  - WeiMin Zhang
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: false
+    fig_caption: true
+  word_document:
+    toc: true
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = FALSE,
+  message = FALSE,
+  warning = FALSE,
+  eval    = FALSE,   # analysis chunks are documentation-first; set to TRUE to re-run
+  fig.align = "center",
+  dpi     = 300
+)
+
+## Resolve the repository root so the document knits from scripts/ or from root.
+find_repo_root <- function() {
+  cand <- normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+  for (i in 1:4) {
+    if (dir.exists(file.path(cand, "data")) && dir.exists(file.path(cand, "scripts"))) return(cand)
+    cand <- normalizePath(file.path(cand, ".."), winslash = "/", mustWork = FALSE)
+  }
+  normalizePath(getwd(), winslash = "/", mustWork = FALSE)
+}
+ROOT     <- find_repo_root()
+SCRIPTS  <- file.path(ROOT, "scripts")
+RESULTS  <- file.path(ROOT, "results")
+FIGURES  <- file.path(RESULTS, "figures")
+
+## Helpers used by the (eval = TRUE) reporting chunks below.
+read_if <- function(...) {
+  p <- file.path(...)
+  if (file.exists(p)) utils::read.csv(p, check.names = FALSE, stringsAsFactors = FALSE) else NULL
+}
+fig_if <- function(...) {
+  p <- file.path(...)
+  if (file.exists(p)) knitr::include_graphics(p) else invisible(NULL)
+}
+```
+
+# Abstract
+
+**Objective.** To resolve the causal direction of complement signalling in Crohn's
+disease (CD): whether the classical-pathway component C2 is causally protective,
+and whether complement factor I (CFI) is a driver or a compensatory marker of
+ileal-restricted inflammation.
+
+**Design.** A discovery-validation transcriptomic framework across two independent
+mucosal cohorts (GSE16879, 73 CD vs 12 controls; GSE75214, 75 CD vs 22 controls)
+was combined with weighted gene co-expression network analysis (WGCNA), machine
+learning (LASSO plus random forest), CIBERSORT immune deconvolution, single-cell
+RNA sequencing of 160,981 intestinal cells (GSE134809), two-sample Mendelian
+randomisation (MR), and structure-based docking of nafamostat mesylate.
+
+**Results.** Differential expression (limma, |log2FC| > 1, adjusted P < 0.05)
+and WGCNA converged on a CD-associated "yellow" co-expression module enriched for
+complement and innate-immune genes. A three-gene signature (CFI, PAQR5, KCNE3)
+selected by LASSO and random forest achieved an area under the curve (AUC) of
+0.90 in the discovery cohort under 5-fold cross-validation; bootstrap internal
+validation with 2,000 resamples gave a more conservative AUC of 0.711
+(95% CI 0.565-0.844). CIBERSORT showed a myeloid-shifted infiltrate in CD mucosa
+in both cohorts. In single-cell data, CFI+ cells (raw UMI > 0) accounted for
+0.89% of ileal CD cells, were strongly enriched relative to all other cells
+(p = 2.4e-22), and were absent from colonic CD. MR established C2 as causally
+protective (OR = 0.43 per SD, p = 2.2e-6), whereas CFI showed no independent
+causal effect on CD risk (p = 0.73). Docking placed nafamostat in the C1r/C1s
+catalytic pocket (HIS57/ASP102/SER195) at approximately -8.8 kcal/mol, about
+2 kcal/mol more favourable than the CFI serine protease domain (-6.8 kcal/mol).
+
+**Conclusions.** C2-initiated classical complement activation is the causal axis in
+CD; CFI elevation is a compensatory, ileal-restricted response rather than a
+driver. The CFI/PAQR5/KCNE3 signature is therefore best interpreted as a marker of
+downstream complement-associated immune activation, and upstream C1r/C1s
+inhibition (e.g. nafamostat) is the mechanistically coherent intervention point.
+
+## What is already known
+
+- Complement activation accompanies mucosal inflammation in inflammatory bowel
+  disease, but the direction of causality has not been established.
+- Machine-learning signatures for CD rarely separate causal drivers from
+  compensatory markers, and are seldom validated with resampling.
+
+## What this study adds
+
+- Genetically predicted C2 is causally protective against CD (OR = 0.43 per SD,
+  p = 2.2e-6), while CFI is not causal (p = 0.73).
+- CFI+ cells are an ileal-specific population (0.89% of ileal CD cells,
+  p = 2.4e-22) and are absent from colonic CD, giving an anatomical explanation for
+  the compensatory signal.
+- Structure-based docking nominates nafamostat as a C1r/C1s-selective binder with
+  an approximately 2 kcal/mol selectivity window over CFI.
+
+# Introduction
+
+Crohn's disease is a relapsing transmural inflammatory bowel disease in which
+epithelial barrier failure and dysregulated innate immunity drive progressive
+tissue damage. Despite biologics targeting TNF, integrins and interleukins, a
+substantial share of patients are primary non-responders or lose response, and
+mechanism-anchored biomarkers remain scarce.
+
+The complement system converges on C3/C5 cleavage through the classical, lectin
+and alternative pathways. The classical pathway is initiated by C1q recognition
+followed by C1r/C1s-mediated cleavage of C4 and C2, whereas CFI is the serine
+protease that degrades C3b and C4b and thereby restrains amplification.
+Observational transcriptomics repeatedly report increased CFI in inflamed CD
+mucosa, but such associations cannot distinguish an upstream driver from a
+downstream brake.
+
+We therefore combined (i) a discovery-validation transcriptomic analysis,
+(ii) network and machine-learning distillation of a compact signature,
+(iii) immune deconvolution, (iv) single-cell localisation of CFI+ cells,
+(v) two-sample Mendelian randomisation to obtain genetically anchored causal
+estimates, and (vi) structure-based docking to translate the causal model into a
+pharmacological hypothesis.
+
+# Methods
+
+All analyses are implemented as numbered, self-contained scripts in `scripts/`.
+Each script reads from `data/processed/` and writes tables and figures to
+`results/`. Reproducibility is enforced with `set.seed(2024)` (R) and
+`random_state = 2024` (Python), and every script prints `sessionInfo()`.
+
+| Step | Script | Output |
+|:--|:--|:--|
+| Differential expression | `01_DEG_limma.R` | DEG tables, volcano plots |
+| Co-expression networks | `02_WGCNA.R` | modules, module-trait heatmap, GS vs MM |
+| Signature derivation | `03_LASSO_RF.R` | LASSO/RF selection, ROC curves |
+| Immune deconvolution | `04_CIBERSORT.R` | LM22 fractions, CD vs control tests |
+| Single-cell validation | `05_scRNA_Seurat.R` | UMAP, CFI+ proportions, enrichment |
+| Causal inference | `06_MR_TwoSampleMR.R` | MR estimates, sensitivity analyses |
+| Structural pharmacology | `07_docking_AutoDockVina.py` | docking scores, poses |
+| Internal validation | `08_bootstrap_AUC.R` | bootstrap AUC distribution and CI |
+
+### Data sources and preprocessing
+
+GSE16879 (Affymetrix Human Genome U133 Plus 2.0; annotated with
+`hgu133plus2SYMBOL`) served as the discovery cohort (73 CD, 12 non-IBD controls).
+GSE75214 (Affymetrix Human Gene 1.0 ST; annotated with
+`hugene10sttranscriptclusterSYMBOL`) served as the independent validation cohort
+(75 CD, 22 controls). Probe-level intensities were collapsed to gene symbols by
+retaining the probe with the highest mean expression; GSE16879 was
+log2-transformed, GSE75214 was already on the log2 scale. Ulcerative colitis and
+unclassified samples were excluded.
+
+### Differential expression
+
+`limma` was fitted with a means model (`~ 0 + group`) and the contrast
+`CD - Control`; empirical Bayes moderation was applied. Genes with
+|log2 fold change| > 1 and Benjamini-Hochberg adjusted P < 0.05 were called
+differentially expressed.
+
+### Weighted gene co-expression network analysis
+
+The two cohorts were quantile-normalised, merged on shared genes and
+batch-corrected (`limma::removeBatchEffect`, preserving disease status). The
+5,000 most variable genes (median absolute deviation) entered a signed network.
+The soft-thresholding power beta was the smallest power reaching a scale-free
+topology fit R^2 >= 0.85. Modules were detected with `blockwiseModules`
+(minModuleSize = 30, mergeCutHeight = 0.25) and correlated with traits. The
+CD-associated yellow module was characterised by gene significance (GS,
+correlation with CD status) versus module membership (MM, correlation with the
+module eigengene); hub genes were defined as |MM| > 0.8 and |GS| > 0.2.
+
+### Machine-learning signature
+
+Candidate genes (shared DEGs within the yellow module) were z-scored and passed
+to LASSO logistic regression (`glmnet`, alpha = 1, 5-fold cross-validation,
+lambda.min) and to a random forest (1,000 trees, variable importance ranked by
+mean decrease in Gini). The intersection of LASSO-selected features and the
+random-forest top 20 defined the signature (CFI, PAQR5, KCNE3). Discrimination
+was assessed by 5-fold cross-validated ROC in the discovery cohort and by
+external application of the fitted logistic model to GSE75214.
+
+### Internal validation by bootstrap
+
+The three-gene logistic model was refitted in 2,000 stratified bootstrap
+resamples and evaluated on the out-of-bag samples; the percentile 95% confidence
+interval and Harrell optimism correction are reported.
+
+### Immune deconvolution
+
+CIBERSORT (Newman et al.) with the LM22 signature matrix was run on linear-scale
+mixtures (perm = 1000, quantile normalisation enabled for microarray data). Cell
+fractions were compared between CD and controls with two-sided Wilcoxon rank-sum
+tests and Benjamini-Hochberg correction, and correlated with signature gene
+expression (Spearman).
+
+### Single-cell RNA sequencing
+
+GSE134809 (160,981 cells) was processed with Seurat v5: cells with 200-6,000
+detected genes, at least 500 UMIs and less than 20% mitochondrial reads were
+retained, log-normalised, reduced to 2,000 highly variable genes, and embedded in
+30 principal components with per-sample integration. Louvain clustering was tuned
+to 23 clusters and visualised by UMAP. CFI+ cells were defined by a raw UMI count
+greater than zero (standard definition) and, for a high-confidence set, by the
+top decile of CFI counts among CFI-expressing cells. Enrichment of CFI+ cells in
+ileal CD relative to all other cells was tested by two-sided Fisher exact test.
+
+### Mendelian randomisation
+
+Two-sample MR (`TwoSampleMR`) used circulating protein QTLs for C2 and CFI as
+exposures and Crohn's disease GWAS as the outcome. Instruments were selected at
+p < 5e-8 (relaxed to 5e-6 when fewer than two instruments survived) and clumped
+at r2 = 0.001 within 10,000 kb. Inverse-variance weighting was primary, with
+MR-Egger, weighted median, Cochran's Q, the Egger intercept and leave-one-out
+analyses as sensitivity checks. The reverse direction (CD to CFI) was tested to
+assess compensatory up-regulation.
+
+### Structural pharmacology
+
+The C1r/C1s serine protease domain (PDB 2XRC, cleaned) and an AlphaFold model of
+the CFI protease domain were prepared as receptors, and nafamostat mesylate
+(PubChem CID 4413) as ligand. The AutoDock Vina search box (22 A cube) was
+centred on the catalytic triad centroid (HIS57/ASP102/SER195) with
+exhaustiveness 32, 9 modes and seed 2024.
+
+# Results
+
+## Concordant differential expression in two independent cohorts
+
+```{r deg-run}
+source(file.path(SCRIPTS, "01_DEG_limma.R"), chdir = TRUE)
+```
+
+```{r deg-table, eval=TRUE}
+deg_summary <- read_if(RESULTS, "01_DEG", "DEG_summary.csv")
+if (!is.null(deg_summary)) knitr::kable(deg_summary, digits = 3,
+  caption = "Table S2. Differential expression summary for both cohorts.")
+```
+
+```{r fig1, eval=TRUE, fig.cap="Figure 1. Volcano plots of CD versus control mucosa in the discovery (GSE16879) and validation (GSE75214) cohorts. Thresholds: |log2FC| > 1 and BH-adjusted P < 0.05."}
+fig_if(FIGURES, "Combined_VolcanoPlots_CD_vs_Control.png")
+```
+
+Differential expression recovered a coherent inflammatory programme in both
+cohorts, with complement components (including CFI and CFB) and myeloid effector
+genes among the concordantly up-regulated transcripts.
+
+## A CD-associated co-expression module
+
+```{r wgcna-run}
+source(file.path(SCRIPTS, "02_WGCNA.R"), chdir = TRUE)
+```
+
+```{r fig2, eval=TRUE, fig.cap="Figure 2. WGCNA module-trait relationships and gene significance versus module membership for the CD-associated yellow module."}
+fig_if(FIGURES, "WGCNA_Module_Trait_Heatmap.png")
+fig_if(FIGURES, "Yellow_Module_GS_vs_MM.png")
+```
+
+```{r wgcna-table, eval=TRUE}
+mt <- read_if(RESULTS, "02_WGCNA", "module_trait_correlation.csv")
+if (!is.null(mt)) knitr::kable(head(mt[order(-abs(mt[["cor_CD"]])), ], 8), digits = 3,
+  caption = "Table S3. Modules most strongly correlated with CD status.")
+```
+
+The yellow module showed the strongest positive correlation with CD status, and
+gene significance scaled tightly with module membership, indicating that the most
+connected module members are also the most disease-associated genes.
+
+## A three-gene signature with modest but reproducible discrimination
+
+```{r ml-run}
+source(file.path(SCRIPTS, "03_LASSO_RF.R"), chdir = TRUE)
+source(file.path(SCRIPTS, "08_bootstrap_AUC.R"), chdir = TRUE)
+```
+
+```{r fig3, eval=TRUE, fig.cap="Figure 3. LASSO cross-validation, random-forest importance, ROC curves and the bootstrap AUC distribution for the CFI/PAQR5/KCNE3 signature."}
+fig_if(FIGURES, "Figure_LASSO_CV_Curve.png")
+fig_if(FIGURES, "Top20_RandomForest_Importance.png")
+fig_if(FIGURES, "Figure_Combined_ROC.png")
+fig_if(FIGURES, "Bootstrap_AUC_distribution.png")
+```
+
+```{r ml-table, eval=TRUE}
+perf <- read_if(RESULTS, "03_ML", "model_performance.csv")
+if (!is.null(perf)) knitr::kable(perf, digits = 3,
+  caption = "Table 2. Diagnostic performance of the CFI/PAQR5/KCNE3 signature.")
+boot <- read_if(RESULTS, "08_bootstrap", "bootstrap_auc_summary.csv")
+if (!is.null(boot)) knitr::kable(boot,
+  caption = "Table 2b. Bootstrap internal validation (2,000 resamples).")
+```
+
+LASSO retained a compact feature set that overlapped the random-forest top 20;
+the intersection defined the CFI/PAQR5/KCNE3 signature. Five-fold cross-validated
+discrimination in the discovery cohort was AUC = 0.90. Under the stricter
+out-of-bag bootstrap with 2,000 resamples the mean AUC was 0.711
+(95% CI 0.565-0.844), which we regard as the honest internal estimate and which
+tempers the apparent performance of small mucosal signatures.
+
+## Myeloid-shifted immune infiltration
+
+```{r cibersort-run}
+source(file.path(SCRIPTS, "04_CIBERSORT.R"), chdir = TRUE)
+```
+
+```{r fig4, eval=TRUE, fig.cap="Figure 4. CIBERSORT LM22 immune infiltration in CD versus control mucosa across both cohorts, and correlation of the signature genes with immune fractions."}
+fig_if(FIGURES, "Immune_Infiltration_Violin_CD_vs_Control.png")
+fig_if(FIGURES, "Gene_Immune_Correlation_Heatmap.png")
+```
+
+```{r cibersort-table, eval=TRUE}
+imm <- read_if(RESULTS, "04_CIBERSORT", "immune_fraction_group_tests.csv")
+if (!is.null(imm)) knitr::kable(head(imm, 12), digits = 4,
+  caption = "Table S5. Immune cell fractions differing between CD and controls.")
+```
+
+## CFI+ cells are ileal-restricted at single-cell resolution
+
+```{r scrna-run}
+source(file.path(SCRIPTS, "05_scRNA_Seurat.R"), chdir = TRUE)
+```
+
+```{r fig5, eval=TRUE, fig.cap="Figure 5. Single-cell atlas of GSE134809 (160,981 cells, 23 clusters): UMAP by cluster and disease group, CFI expression, and the proportion of CFI+ cells per group."}
+fig_if(FIGURES, "scRNA_Figure5_composite.png")
+```
+
+```{r scrna-table, eval=TRUE}
+cfi_grp <- read_if(RESULTS, "05_scRNA", "CFIpos_cells_by_group.csv")
+if (!is.null(cfi_grp)) knitr::kable(cfi_grp, digits = 3,
+  caption = "Table S6. CFI+ cells (raw UMI > 0) by disease group.")
+cfi_test <- read_if(RESULTS, "05_scRNA", "CFIpos_enrichment_tests.csv")
+if (!is.null(cfi_test)) knitr::kable(cfi_test, digits = 4,
+  caption = "Table S6b. Fisher exact enrichment tests for CFI+ cells.")
+```
+
+CFI+ cells made up 0.89% of ileal CD cells and were significantly enriched
+relative to all other cells (p = 2.4e-22), whereas no CFI+ cells were detected in
+colonic CD. The same pattern held for the high-confidence top-decile definition,
+indicating that the bulk CFI signal originates from an anatomically restricted
+compartment rather than from a global increase in complement regulation.
+
+## C2 is causally protective; CFI is not causal
+
+```{r mr-run}
+source(file.path(SCRIPTS, "06_MR_TwoSampleMR.R"), chdir = TRUE)
+```
+
+```{r fig6, eval=TRUE, fig.cap="Figure 6. Two-sample Mendelian randomisation of complement proteins on Crohn's disease risk (inverse-variance weighted estimates, OR per 1-SD higher protein level)."}
+fig_if(FIGURES, "MR_forest_plot.png")
+```
+
+```{r mr-table, eval=TRUE}
+mr_res <- read_if(RESULTS, "06_MR", "mr_odds_ratios.csv")
+if (!is.null(mr_res)) knitr::kable(mr_res, digits = 4,
+  caption = "Table 3. Primary MR estimates for C2 and CFI on Crohn's disease.")
+```
+
+Genetically predicted C2 was protective against CD (OR = 0.43 per SD,
+p = 2.2e-6), with consistent weighted-median estimates and no evidence of
+directional pleiotropy. CFI showed no independent causal effect (p = 0.73), while
+the reverse direction indicated modest CD-driven CFI elevation, consistent with
+compensation rather than causation.
+
+## Nafamostat selectively engages the C1r/C1s catalytic pocket
+
+```{r docking-run, engine="bash"}
+python scripts/07_docking_AutoDockVina.py --exhaustiveness 32 --seed 2024
+```
+
+```{r docking-table, eval=TRUE}
+dock <- read_if(RESULTS, "07_docking", "docking_scores.csv")
+if (!is.null(dock)) knitr::kable(head(dock, 12), digits = 2,
+  caption = "Table 4. AutoDock Vina binding energies for nafamostat.")
+```
+
+Docking placed the guanidinobenzoate moiety of nafamostat in the S1 pocket
+adjacent to the catalytic triad (HIS57/ASP102/SER195) of C1r/C1s with a binding
+energy of approximately -8.8 kcal/mol, compared with -6.8 kcal/mol for the CFI
+protease domain: an approximately 2 kcal/mol selectivity window favouring
+upstream classical-pathway inhibition.
+
+# Discussion
+
+Three independent lines of evidence converge on the same model. First, genetics:
+C2 is causally protective, whereas CFI is not, so the classical pathway sits
+upstream of disease risk while CFI sits downstream. Second, anatomy: CFI+ cells
+are confined to ileal CD and absent from colonic CD, which explains why bulk CFI
+elevation appears reproducibly yet carries no causal weight. Third, performance:
+an honest bootstrap AUC of 0.711 (95% CI 0.565-0.844) is far below the apparent
+cross-validated 0.90 and is exactly what one expects from a compensatory marker
+rather than a driver.
+
+The therapeutic implication is directional. If complement contributes causally
+through classical-pathway initiation, then inhibiting C1r/C1s (rather than
+supplementing or targeting CFI) is the coherent intervention, and nafamostat, an
+approved serine protease inhibitor, shows an approximately 2 kcal/mol docking
+preference for the C1r/C1s catalytic domain over CFI.
+
+Limitations include the modest instrument strength of protein QTLs for C2, the
+in-silico nature of the docking evidence, the absence of paired proteomic
+validation, and the small control groups in both microarray cohorts, which
+inflate apparent discrimination and motivated the bootstrap correction. Colonic
+CD is under-represented in the single-cell resource, so the absence of CFI+ cells
+there should be confirmed in larger colonic cohorts.
+
+# Conclusion
+
+C2-initiated classical complement activation is the causal axis in Crohn's
+disease, while CFI elevation is an ileal-restricted compensatory response. The
+CFI/PAQR5/KCNE3 signature is a marker of that downstream state, with honest
+discrimination of AUC 0.711, and upstream C1r/C1s inhibition is the
+mechanistically justified therapeutic direction.
+
+# Data and code availability
+
+All transcriptomic data are public: GSE16879, GSE75214 and GSE134809 (NCBI GEO).
+GWAS summary statistics were accessed through the OpenGWAS API. The complete
+analysis code is in `scripts/` of this repository; expected inputs are documented
+in the header of each script, and all outputs are written to `results/`.
+
+# Reproducibility
+
+```{r session, eval=TRUE, echo=TRUE}
+sessionInfo()
+```
