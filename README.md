@@ -10,8 +10,20 @@ provided so that every result in the paper can be regenerated.
 
 > **Double-blind review.** This is the anonymous review copy. The corresponding
 > author's identity, affiliation, and any identifying metadata have been removed
-> from code comments and commit history is minimised. After acceptance, a
-> versioned release (`v1.0.0`) will be tagged.
+> from code comments. Because this repository URL itself contains the owner
+> handle, **share the anonymised mirror link, not the raw GitHub URL** (see below).
+>
+> ### Get the anonymous link (Anonymous GitHub)
+> 1. Ensure this repo is **public** (it is).
+> 2. Go to <https://anonymous.4open.science/> and sign in with the GitHub account
+>    that owns this repo.
+> 3. Select `IBD-complement-analysis-release-v1.0.0-`; the service generates a
+>    stable anonymous URL of the form `https://anonymous.4open.science/r/<token>/`.
+> 4. Submit that anonymous URL to the journal. The mirror hides the GitHub owner,
+>    commit-author name/email, and the original repository path.
+>
+> After acceptance, a versioned release (`v1.0.0`) is tagged and the handle can be
+> revealed.
 
 ---
 

@@ -1,7 +1,7 @@
 # IBD Figures Extraction — Summary
 
 **Date:** 2026-08-03
-**Repo:** `D:\IBD_Project\IBD-complement-analysis`
+**Repo:** `this repository`
 **Output dir:** `results/figures/`
 
 ## What was done

@@ -46,8 +46,11 @@ def extract(series_matrix, out_csv):
     print("Wrote %s (%d samples)" % (out_csv, len(out)))
 
 if __name__ == "__main__":
-    base = r"D:\IBD_Project"
-    out = r"D:\IBD_Project\IBD-complement-analysis\data\processed"
+    # repo root = parent of this script's directory (data/)
+    repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    # place GSE16879_series_matrix.txt / GSE75214_series_matrix.txt in repo root
+    base = repo
+    out = os.path.join(repo, "data", "processed")
     os.makedirs(out, exist_ok=True)
     extract(os.path.join(base, "GSE16879_series_matrix.txt"),
             os.path.join(out, "GSE16879_phenotype.csv"))
