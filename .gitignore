@@ -1,0 +1,28 @@
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+*.RDataTmp*
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# Large raw data (NEVER commit; reference GEO accessions instead)
+raw/
+*.fastq.gz
+*_RAW.tar
+GPL15207.soft.gz
+*.biom
+*.biom.gz
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local scratch
+scratch/
+tmp/
